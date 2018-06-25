@@ -1,14 +1,15 @@
 package stake
 
 import (
+	abci "github.com/tendermint/abci/types"
 	tmtypes "github.com/tendermint/tendermint/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/stake/types"
 )
 
-// InitGenesis - store genesis parameters
-func InitGenesis(ctx sdk.Context, keeper Keeper, data types.GenesisState) {
+// InitGenesis - store genesis parametersi
+func InitGenesis(ctx sdk.Context, keeper Keeper, data types.GenesisState) (res []abci.Validator) {
 	keeper.SetPool(ctx, data.Pool)
 	keeper.SetNewParams(ctx, data.Params)
 	keeper.InitIntraTxCounter(ctx)
@@ -27,7 +28,15 @@ func InitGenesis(ctx sdk.Context, keeper Keeper, data types.GenesisState) {
 	for _, bond := range data.Bonds {
 		keeper.SetDelegation(ctx, bond)
 	}
+
 	keeper.UpdateBondedValidatorsFull(ctx)
+
+	vals := keeper.GetAllValidators(ctx)
+	res = make([]abci.Validator, len(vals))
+	for i, val := range vals {
+		res[i] = sdk.ABCIValidator(val)
+	}
+	return
 }
 
 // WriteGenesis - output genesis parameters
