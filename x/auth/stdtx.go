@@ -30,13 +30,13 @@ func NewStdTx(msgs []sdk.Msg, fee StdFee, sigs []StdSignature, memo string) StdT
 //nolint
 func (tx StdTx) GetMsgs() []sdk.Msg { return tx.Msgs }
 
-// GetSigners returns the addresses that must sign the transaction.
-// Addresses are returned in a determistic order.
-// They are accumulated from the GetSigners method for each Msg
-// in the order they appear in tx.GetMsgs().
+// GetSigners returns the addresses that must sign the transaction. Addresses
+// are returned in a deterministic order. They are accumulated from the
+// GetSigners method for each Msg in the order they appear in tx.GetMsgs().
 // Duplicate addresses will be omitted.
 func (tx StdTx) GetSigners() []sdk.Address {
 	seen := map[string]bool{}
+
 	var signers []sdk.Address
 	for _, msg := range tx.GetMsgs() {
 		for _, addr := range msg.GetSigners() {
@@ -46,20 +46,18 @@ func (tx StdTx) GetSigners() []sdk.Address {
 			}
 		}
 	}
+
 	return signers
 }
 
 //nolint
 func (tx StdTx) GetMemo() string { return tx.Memo }
 
-// Signatures returns the signature of signers who signed the Msg.
 // GetSignatures returns the signature of signers who signed the Msg.
-// CONTRACT: Length returned is same as length of
-// pubkeys returned from MsgKeySigners, and the order
-// matches.
-// CONTRACT: If the signature is missing (ie the Msg is
-// invalid), then the corresponding signature is
-// .Empty().
+// CONTRACT: Length returned is same as length of pubkeys returned from
+// MsgKeySigners, and the order matches.
+// CONTRACT: If the signature is missing (ie the Msg is invalid), then the
+// corresponding signature is .Empty().
 func (tx StdTx) GetSignatures() []StdSignature { return tx.Signatures }
 
 // FeePayer returns the address responsible for paying the fees
