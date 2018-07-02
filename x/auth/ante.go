@@ -14,22 +14,18 @@ const (
 	maxMemoCharacters         = 100
 )
 
-// NewAnteHandler returns an AnteHandler that checks
-// and increments sequence numbers, checks signatures & account numbers,
-// and deducts fees from the first signer.
+// NewAnteHandler returns an AnteHandler that checks and increments sequence
+// numbers, checks signatures & account numbers, and deducts fees from the
+// first signer.
 func NewAnteHandler(am AccountMapper, fck FeeCollectionKeeper) sdk.AnteHandler {
-
-	return func(
-		ctx sdk.Context, tx sdk.Tx,
-	) (_ sdk.Context, _ sdk.Result, abort bool) {
-
-		// This AnteHandler requires Txs to be StdTxs
+	return func(ctx sdk.Context, tx sdk.Tx) (sdk.Context, sdk.Result, bool) {
+		// require transactions to be of type StdTx
 		stdTx, ok := tx.(StdTx)
 		if !ok {
 			return ctx, sdk.ErrInternal("tx must be StdTx").Result(), true
 		}
 
-		// Assert that there are signatures.
+		// assert that there are signatures
 		var sigs = stdTx.GetSignatures()
 		if len(sigs) == 0 {
 			return ctx,
@@ -38,10 +34,11 @@ func NewAnteHandler(am AccountMapper, fck FeeCollectionKeeper) sdk.AnteHandler {
 		}
 
 		memo := stdTx.GetMemo()
-
 		if len(memo) > maxMemoCharacters {
 			return ctx,
-				sdk.ErrMemoTooLarge(fmt.Sprintf("maximum number of characters is %d but received %d characters", maxMemoCharacters, len(memo))).Result(),
+				sdk.ErrMemoTooLarge(
+					fmt.Sprintf("maximum number of characters is %d but received %d characters", maxMemoCharacters, len(memo)),
+				).Result(),
 				true
 		}
 
@@ -51,28 +48,27 @@ func NewAnteHandler(am AccountMapper, fck FeeCollectionKeeper) sdk.AnteHandler {
 		// charge gas for the memo
 		ctx.GasMeter().ConsumeGas(memoCostPerByte*sdk.Gas(len(memo)), "memo")
 
+		fee := stdTx.Fee
 		msgs := tx.GetMsgs()
 
-		// Assert that number of signatures is correct.
-		var signerAddrs = stdTx.GetSigners()
+		// assert that number of signatures is correct
+		signerAddrs := stdTx.GetSigners()
 		if len(sigs) != len(signerAddrs) {
-			return ctx,
-				sdk.ErrUnauthorized("wrong number of signers").Result(),
-				true
+			return ctx, sdk.ErrUnauthorized("wrong number of signers").Result(), true
 		}
 
-		// Get the sign bytes (requires all account & sequence numbers and the fee)
+		// get the sign bytes (requires all account & sequence numbers and the fee)
 		sequences := make([]int64, len(signerAddrs))
 		for i := 0; i < len(signerAddrs); i++ {
 			sequences[i] = sigs[i].Sequence
 		}
+
 		accNums := make([]int64, len(signerAddrs))
 		for i := 0; i < len(signerAddrs); i++ {
 			accNums[i] = sigs[i].AccountNumber
 		}
-		fee := stdTx.Fee
 
-		// Check sig and nonce and collect signer accounts.
+		// check sig and nonce and collect signer accounts
 		var signerAccs = make([]Account, len(signerAddrs))
 		for i := 0; i < len(sigs); i++ {
 			signerAddr, sig := signerAddrs[i], sigs[i]
@@ -92,15 +88,17 @@ func NewAnteHandler(am AccountMapper, fck FeeCollectionKeeper) sdk.AnteHandler {
 				// TODO: min fee
 				if !fee.Amount.IsZero() {
 					ctx.GasMeter().ConsumeGas(deductFeesCost, "deductFees")
+
 					signerAcc, res = deductFees(signerAcc, fee)
 					if !res.IsOK() {
 						return ctx, res, true
 					}
+
 					fck.addCollectedFees(ctx, fee.Amount)
 				}
 			}
 
-			// Save the account.
+			// save the account
 			am.SetAccount(ctx, signerAcc)
 			signerAccs[i] = signerAcc
 		}
@@ -108,62 +106,64 @@ func NewAnteHandler(am AccountMapper, fck FeeCollectionKeeper) sdk.AnteHandler {
 		// cache the signer accounts in the context
 		ctx = WithSigners(ctx, signerAccs)
 
-		// TODO: tx tags (?)
-
-		return ctx, sdk.Result{}, false // continue...
+		// TODO: Transaction tags???
+		return ctx, sdk.Result{}, false
 	}
 }
 
-// verify the signature and increment the sequence.
-// if the account doesn't have a pubkey, set it.
+// processSig verifies the signature and increment the sequence. If the account
+// doesn't have a pubkey, set it.
 func processSig(
 	ctx sdk.Context, am AccountMapper,
 	addr sdk.Address, sig StdSignature, signBytes []byte) (
 	acc Account, res sdk.Result) {
 
-	// Get the account.
+	// get the account
 	acc = am.GetAccount(ctx, addr)
 	if acc == nil {
 		return nil, sdk.ErrUnknownAddress(addr.String()).Result()
 	}
 
-	// Check account number.
+	// check account number
 	accnum := acc.GetAccountNumber()
 	if accnum != sig.AccountNumber {
 		return nil, sdk.ErrInvalidSequence(
 			fmt.Sprintf("Invalid account number. Got %d, expected %d", sig.AccountNumber, accnum)).Result()
 	}
 
-	// Check and increment sequence number.
+	// check and increment sequence number
 	seq := acc.GetSequence()
 	if seq != sig.Sequence {
 		return nil, sdk.ErrInvalidSequence(
 			fmt.Sprintf("Invalid sequence. Got %d, expected %d", sig.Sequence, seq)).Result()
 	}
+
 	err := acc.SetSequence(seq + 1)
 	if err != nil {
 		// Handle w/ #870
 		panic(err)
 	}
-	// If pubkey is not known for account,
-	// set it from the StdSignature.
+
+	// If pubkey is not known for the account, set it from the StdSignature.
 	pubKey := acc.GetPubKey()
 	if pubKey == nil {
 		pubKey = sig.PubKey
 		if pubKey == nil {
 			return nil, sdk.ErrInvalidPubKey("PubKey not found").Result()
 		}
+
 		if !bytes.Equal(pubKey.Address(), addr) {
 			return nil, sdk.ErrInvalidPubKey(
 				fmt.Sprintf("PubKey does not match Signer address %v", addr)).Result()
 		}
+
 		err = acc.SetPubKey(pubKey)
 		if err != nil {
 			return nil, sdk.ErrInternal("setting PubKey on signer's account").Result()
 		}
 	}
 
-	// Check sig.
+	// check signature
 	ctx.GasMeter().ConsumeGas(verifyCost, "ante verify")
 	if !pubKey.VerifyBytes(signBytes, sig.Signature) {
 		return nil, sdk.ErrUnauthorized("signature verification failed").Result()
