@@ -7,8 +7,8 @@ import (
 	"github.com/tendermint/go-amino"
 	"github.com/tendermint/iavl"
 	abci "github.com/tendermint/tendermint/abci/types"
-	cmn "github.com/tendermint/tmlibs/common"
-	dbm "github.com/tendermint/tmlibs/db"
+	cmn "github.com/tendermint/tendermint/libs/common"
+	dbm "github.com/tendermint/tendermint/libs/db"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -47,6 +47,8 @@ type iavlStore struct {
 }
 
 // CONTRACT: tree should be fully loaded.
+// TODO: use more numHistory's, so the below nolint can be removed
+// nolint: unparam
 func newIAVLStore(tree *iavl.VersionedTree, numHistory int64) *iavlStore {
 	st := &iavlStore{
 		tree:       tree,
